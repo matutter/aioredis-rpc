@@ -1,0 +1,7 @@
+version: "3.7"
+services:
+  redis:
+    image: redis:6.2.4-alpine
+    container_name: 'rrpc'
+    ports:
+      - 6379:6379
