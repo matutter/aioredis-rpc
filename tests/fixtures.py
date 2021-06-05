@@ -13,7 +13,9 @@ pytestmark = pytest.mark.asyncio
 if not hasattr(asyncio, 'run'):
   # Patch for python 3.6
   def patch_run(coro:Coroutine) -> None:
-    loop = asyncio.get_event_loop().run_until_complete(coro)
+    loop = asyncio.events.new_event_loop()
+    asyncio.events.set_event_loop(loop)
+    return loop.run_until_complete(coro)
   setattr(asyncio, 'run', patch_run)
 
 class AsyncTimer:
