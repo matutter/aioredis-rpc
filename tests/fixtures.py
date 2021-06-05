@@ -2,7 +2,7 @@ import asyncio
 import logging
 import signal
 from inspect import isawaitable
-from typing import Any, Awaitable, Callable, Tuple
+from typing import Any, Awaitable, Callable, Coroutine, Tuple
 
 import pytest
 
@@ -10,6 +10,11 @@ log = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.asyncio
 
+if not hasattr(asyncio, 'run'):
+  # Patch for python 3.6
+  def patch_run(coro:Coroutine) -> None:
+    loop = asyncio.get_event_loop().run_until_complete(coro)
+  setattr(asyncio, 'run', patch_run)
 
 class AsyncTimer:
   start: float

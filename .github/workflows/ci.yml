@@ -68,9 +68,6 @@ jobs:
     name: test ${{ matrix.tox_env }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
 
-    env:
-      TEST_RMQ_DSN: amqp://guest:guest@rabbitmq/
-
     services:
       rabbitmq:
         image: rabbitmq:alpine
