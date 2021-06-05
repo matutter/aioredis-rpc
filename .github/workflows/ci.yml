@@ -12,7 +12,7 @@ on:
 jobs:
 
   env-check:
-    if: github.repository == 'matutter/py-redisrpc'
+    if: github.repository == 'matutter/aioredis-rpc'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: pypi
@@ -132,7 +132,7 @@ jobs:
       run: "tox -e ${{ matrix.tox_env }}"
 
   coverage:
-    if: github.event_name == 'push' && github.repository == 'matutter/py-redisrpc'
+    if: github.event_name == 'push' && github.repository == 'matutter/aioredis-rpc'
     needs: [build]
     name: coverage
     environment: pypi
@@ -163,7 +163,7 @@ jobs:
 
     - name: Test with coverage
       run: |
-        pytest --cov=redisrpc -s
+        pytest --cov=aioredis_rpc -s
 
     - name: Generate coverage report
       run: coverage xml
@@ -176,7 +176,7 @@ jobs:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   deploy:
-    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags') && github.repository == 'matutter/py-redisrpc'
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags') && github.repository == 'matutter/aioredis-rpc'
     needs: [build, test, coverage]
     runs-on: ubuntu-latest
     timeout-minutes: 15
