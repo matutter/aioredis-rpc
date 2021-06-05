@@ -133,14 +133,14 @@ class RpcProvider:
           if message is None:
             await asyncio.sleep(0.01)
             continue
-          log.debug('%s received message', self.id)
           await self.receive(message['data'])
       except asyncio.TimeoutError:
         pass
-      except asyncio.exceptions.CancelledError:
+      except (asyncio.exceptions.CancelledError, RuntimeError):
+        # Runtime error is thrown on py39+ when the task is cancelled
         break
       except:
-        log.exception('from %s', self.id, self.consumer_queue_name)
+        log.exception('from %s', self.id)
 
   async def connect(self, dsn: str = "redis://localhost") -> None:
     if self.is_connected:

@@ -2,14 +2,13 @@ import asyncio
 import logging
 import signal
 from inspect import isawaitable
-from typing import Any, Awaitable, Callable, Tuple
+from typing import Any, Awaitable, Callable, Coroutine, Tuple
 
 import pytest
 
 log = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.asyncio
-
 
 class AsyncTimer:
   start: float

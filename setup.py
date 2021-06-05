@@ -26,7 +26,7 @@ long_description = read('README.md')
 install_requires = """
 pydantic==1.8.2
 msgpack==1.0.2
-aioredis==1.3.1
+aioredis==2.0.0a1
 hiredis==2.0.0
 """
 
