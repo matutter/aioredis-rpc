@@ -17,7 +17,7 @@ def read(file, pattern=None):
 
 
 # Extract the __version__ value from __init__.py
-version = read('redisrpc/__init__.py', r'__version__ = "([^"]+)"')
+version = read('aioredis_rpc/__init__.py', r'__version__ = "([^"]+)"')
 
 # Use the entire README
 long_description = read('README.md')
@@ -31,7 +31,7 @@ hiredis==2.0.0
 """
 
 setup(
-    name="redisrpc",
+    name="aioredis-rpc",
     version=version,
     description="An RPC library based on aioredis, msgpack, and pydantic.",
     long_description=long_description,
@@ -39,13 +39,12 @@ setup(
     author="Mathew Utter",
     author_email="mcutter.svc@gmail.com",
     license="MIT",
-    url="http://github.com/matutter/redisrpc",
+    url="http://github.com/matutter/aioredis-rpc",
     keywords=' '.join([
         'aioredis',
         'msgpack',
         'python',
         'redis',
-        'redisrpc',
         'rpc'
     ]),
     classifiers=[
@@ -74,7 +73,7 @@ setup(
         'Topic :: System :: Monitoring',
         'Topic :: Utilities',
     ],
-    packages=find_packages(include=['redisrpc']),
+    packages=find_packages(include=['aioredis_rpc']),
     install_requires=install_requires,
     requires=re.findall(r'^\w+', install_requires, re.MULTILINE),
     cmdclass={

@@ -1,9 +1,20 @@
-# redisrpc
+# aioredis-rpc
+
+[![ci](https://github.com/matutter/aioredis-rpc/workflows/CI/badge.svg?event=push)](https://github.com/matutter/aioredis-rpc/actions?query=event%3Apush+branch%3Amaster+workflow%3ACI)
+[![coverage](https://codecov.io/gh/matutter/aioredis-rpc/branch/master/graph/badge.svg)](https://codecov.io/gh/matutter/aioredis-rpc)
+[![pypi](https://img.shields.io/pypi/v/aioredis-rpc.svg)](https://pypi.python.org/pypi/aioredis-rpc)
+[![downloads](https://img.shields.io/pypi/dm/aioredis-rpc.svg)](https://pypistats.org/packages/aioredis-rpc)
+[![versions](https://img.shields.io/pypi/pyversions/aioredis-rpc.svg)](https://github.com/matutter/aioredis-rpc)
+[![license](https://img.shields.io/github/license/matutter/aioredis-rpc.svg)](https://github.com/matutter/aioredis-rpc/blob/master/LICENSE)
 
 A RPC interface using [aioredis](https://github.com/aio-libs/aioredis-py)
 and [pydantic](https://github.com/samuelcolvin/pydantic).
 
 ## Usage
+
+```bash
+pip install aioredis-rpc
+```
 
 `pydantic` is used to model complex objects which are transparently serialized
 and packed into messages.
