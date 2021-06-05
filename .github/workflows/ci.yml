@@ -78,16 +78,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [ "ubuntu-py36",
+        name: [
                 "ubuntu-py37",
                 "ubuntu-py38",
                 "ubuntu-py39",
                 ]
         include:
-          - name: "ubuntu-py36"
-            python: "3.6"
-            os: ubuntu-latest
-            tox_env: "py36"
+          # - name: "ubuntu-py36"
+          #   python: "3.6"
+          #   os: ubuntu-latest
+          #   tox_env: "py36"
 
           - name: "ubuntu-py37"
             python: "3.7"
