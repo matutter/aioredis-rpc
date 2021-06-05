@@ -1,0 +1,215 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - prerelease
+    tags:
+      - '**'
+  pull_request: {}
+
+jobs:
+
+  env-check:
+    if: github.repository == 'matutter/py-redisrpc'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: pypi
+    steps:
+
+    - name: Check environment variables
+      run: |
+        test -n "$TWINE_USERNAME" && echo TWINE_USERNAME OK
+        test -n "$TWINE_PASSWORD" && echo TWINE_PASSWORD OK
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPY_TOKEN }}
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.8"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip wheel
+        pip install -r requirements.txt
+
+    - name: Build
+      run: |
+        python -m build
+
+    - name: Store dist artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: pypi_files
+        path: dist
+
+    - name: Store dist artifacts for testing
+      uses: actions/upload-artifact@v2
+      with:
+        name: test_files
+        path: |
+          dist/
+
+  test:
+    needs: [build]
+    timeout-minutes: 15
+    name: test ${{ matrix.tox_env }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    env:
+      TEST_RMQ_DSN: amqp://guest:guest@rabbitmq/
+
+    services:
+      rabbitmq:
+        image: rabbitmq:alpine
+        ports:
+          - 5672:5672
+          - 15672:15672
+
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [ "ubuntu-py36",
+                "ubuntu-py37",
+                "ubuntu-py38",
+                "ubuntu-py39",
+                "ubuntu-py310",
+                "ubuntu-py311"
+                ]
+        include:
+          - name: "ubuntu-py36"
+            python: "3.6"
+            os: ubuntu-latest
+            tox_env: "py36"
+
+          - name: "ubuntu-py37"
+            python: "3.7"
+            os: ubuntu-latest
+            tox_env: "py37"
+
+          - name: "ubuntu-py38"
+            python: "3.8"
+            os: ubuntu-latest
+            tox_env: "py38"
+
+          - name: "ubuntu-py39"
+            python: "3.9"
+            os: ubuntu-latest
+            tox_env: "py39"
+
+          # - name: "ubuntu-py310"
+          #   python: "3.10"
+          #   os: ubuntu-latest
+          #   tox_env: "py310"
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python ${{ matrix.python }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip wheel
+        pip install tox coverage
+
+    - name: Run tox
+      run: "tox -e ${{ matrix.tox_env }}"
+
+  coverage:
+    if: github.event_name == 'push' && github.repository == 'matutter/py-redisrpc'
+    needs: [build]
+    name: coverage
+    environment: pypi
+    runs-on: ubuntu-latest
+
+    # env:
+    #   TEST_RMQ_DSN: redis://localhost
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - name: Start Redis
+      uses: supercharge/redis-github-action@1.2.0
+      with:
+        redis-version: 6
+
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.8"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip wheel
+        pip install -r requirements.txt
+
+    - name: Test with coverage
+      run: |
+        pytest --cov=redisrpc -s
+
+    - name: Generate coverage report
+      run: coverage xml
+
+    - name: Upload coverage to CodeCov
+      uses: codecov/codecov-action@v1.2.1
+      with:
+        file: ./coverage.xml
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  deploy:
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags') && github.repository == 'matutter/py-redisrpc'
+    needs: [build, test, coverage]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pypi
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.8"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip wheel
+        pip install twine
+
+    - name: Download dist artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: pypi_files
+        path: dist
+
+    - name: Twine Check
+      run: |
+        twine check dist/*
+        ls -lh dist
+
+    - name: Upload to PyPi
+      run: |
+        twine upload dist/*
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPY_TOKEN }}
