@@ -85,8 +85,6 @@ jobs:
                 "ubuntu-py37",
                 "ubuntu-py38",
                 "ubuntu-py39",
-                "ubuntu-py310",
-                "ubuntu-py311"
                 ]
         include:
           - name: "ubuntu-py36"
