@@ -8,9 +8,9 @@ from typing import List
 
 import coloredlogs
 import pytest
+from aioredis_rpc import (RpcError, RpcProvider, create_client, create_server,
+                          endpoint)
 from pydantic.main import BaseModel
-from redisrpc import (RpcError, RpcProvider, create_client, create_server,
-                      endpoint)
 
 from .fixtures import *
 

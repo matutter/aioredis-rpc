@@ -2,7 +2,7 @@ import asyncio
 import logging
 import signal
 from inspect import isawaitable
-from typing import Any, Awaitable, Callable, Coroutine, Tuple
+from typing import Any, Awaitable, Callable, Tuple
 
 import pytest
 
