@@ -57,8 +57,8 @@ class MyInterface:
     return True
 
   @endpoint
-  async def get_messages(self) -> MyMsgQuery:
-    return MyMsgQuery(length=len(self.messages), messages=self.messages)
+  async def get_messages(self) -> List[MyMsg]:
+    return self.messages
 
 
 async def main(mode: str, message: str = None):
@@ -73,10 +73,10 @@ async def main(mode: str, message: str = None):
       res = await client.put_message(MyMsg(text=message))
       print(res)
     else:
-      query: MyMsgQuery = await client.get_messages()
-      for msg in query.messages:
+      messages = await client.get_messages()
+      for msg in messages:
         print(msg)
-      print('messages', query.length)
+      print('messages', len(messages))
 
   elif mode == 'server':
     print('>', 'starting server')

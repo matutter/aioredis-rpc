@@ -13,6 +13,7 @@ import async_timeout
 from aioredis.client import PubSub, Redis  # type: ignore
 from pydantic import BaseModel
 from pydantic.fields import Field
+from pydantic.main import create_model
 
 from .msgpack_ext import pack_ext, unpack_ext
 
@@ -44,7 +45,7 @@ class RpcMessage(BaseModel):
   args: List[Any] = Field(default_factory=list)
   # client key word arguments
   kwargs: Dict[str, Any] = Field(default_factory=dict)
-  # server result
+  # server result - overridden by create_model
   result: Optional[Any]
 
   error: Optional[RpcErrorMessage]
@@ -133,8 +134,8 @@ class RpcProvider:
     self.redis = redis
     self._channel = None
     self._receiver = None
-    self.pack_msg = pack_msg # type: ignore
-    self.unpack_msg = unpack_msg # type: ignore
+    self.pack_msg = pack_msg  # type: ignore
+    self.unpack_msg = unpack_msg  # type: ignore
 
   @property
   def consumer_queue_name(self) -> str:
@@ -192,7 +193,7 @@ class RpcProvider:
     if redis:
       await redis.close()
 
-  async def send(self, msg: RpcMessage) -> RpcMessage:
+  async def send(self, msg: RpcMessage, message_class: Type[RpcMessage] = RpcMessage) -> RpcMessage:
     pass
 
   async def receive(self, data: bytes) -> None:
@@ -216,16 +217,22 @@ class RpcServer(RpcProvider):
       raise RuntimeError('cannot send message without redis connection')
 
     redis: Redis = self.redis  # type: ignore
-    msg = RpcMessage.parse_obj(self.unpack_msg(data)) # type: ignore
+
+    obj = self.unpack_msg(data)
+    name = obj['name']
+    endpoint = self.endpoints[name]
+    msg = endpoint.message_class.parse_obj(obj)  # type: ignore
     endpoint = self.endpoints[msg.name]
     try:
       response = await endpoint.receive(msg)
     except Exception as e:
       log.exception(f'%s failed to receive RPC message on %s',
                     self.id, endpoint)
-      response = RpcMessage.from_exception(e, orig=msg)
-    data = self.pack_msg(response.dict()) # type: ignore
+      response = endpoint.message_class.from_exception(e, orig=msg)
+
+    data = self.pack_msg(response.dict())  # type: ignore
     log.debug('%s publishing to %s', self.id, msg.reply_to)
+
     recv_count: int = await redis.publish(msg.reply_to, data)
     if recv_count == 0:
       log.warning('A client disconnected before response received %s', msg.id)
@@ -243,28 +250,35 @@ class RpcClient(RpcProvider):
       return self.callback_queue_name
     return self.queue_name
 
-  async def send(self, msg: RpcMessage) -> RpcMessage:
+  async def send(self, msg: RpcMessage, message_class: Type[RpcMessage] = RpcMessage) -> RpcMessage:
     if not self.redis:
       raise RuntimeError('cannot send message without redis connection')
 
     redis: Redis = self.redis  # type: ignore
 
     msg.reply_to = self.callback_queue_name
-    data = self.pack_msg(msg.dict()) # type: ignore
+    data = self.pack_msg(msg.dict())  # type: ignore
     future: Future[RpcMessage] = Future()
     self.pending_results[msg.id] = future
     log.debug('%s publishing to %s', self.id, self.queue_name)
+
     recv_count: int = await redis.publish(self.queue_name, data)
     if recv_count == 0:
       future.set_exception(RpcNotConnectedError(send=msg))
+
     reply: RpcMessage = await asyncio.wait_for(future, self.callback_timeout)
     if reply.error:
       log.warning('%s rpc error from %s %s', self.id, msg.name, reply.error)
       raise RpcError(send=msg, reply=reply)
+
     return reply
 
   async def receive(self, data: bytes):
-    msg = RpcMessage.parse_obj(self.unpack_msg(data)) # type: ignore
+    log.debug('received message')
+    obj = self.unpack_msg(data)
+    name = obj['name']
+    endpoint = self.endpoints[name]
+    msg = endpoint.message_class.parse_obj(obj)  # type: ignore
     future = self.pending_results[msg.id]
     future.set_result(msg)
 
@@ -281,7 +295,7 @@ class Endpoint:
   func: Callable[[Any], Awaitable]
   keyword_models: Dict[str, Type[BaseModel]]
   name: str
-  return_type: Optional[Type]
+  message_class: Type[RpcMessage]
 
   # Only required for client side
   provider: Optional[RpcProvider]
@@ -296,19 +310,26 @@ class Endpoint:
     self.func = func  # type: ignore
     self.name = getattr(func, '__name__', str(func))
     self.argspec: FullArgSpec = getfullargspec(func)
-    self.return_type = None
+    self.message_class = RpcMessage
     self.arg_models = dict()
     self.keyword_models = dict()
 
     annotations = dict(self.argspec.annotations)
     args = [a for a in self.argspec.args if a != 'self']
 
-    for key, val in annotations.items():
-      if not self._check_type_support(val):
-        raise TypeError(f'unexpected type {val} for {key} of {self.name}')
+    # New in 1.1, we support all pydantic supported types
+    # for key, val in annotations.items():
+    #   if not self._check_type_support(val):
+    #     raise TypeError(f'unexpected type {val} for {key} of {self.name}')
 
     if 'return' in annotations:
-      self.return_type = annotations.pop('return')
+      return_type = annotations.pop('return')
+      if return_type:
+        cls = create_model(
+            self.name+'RpcMessage',
+            __base__=RpcMessage,
+            result=(return_type, None))
+        self.message_class = cls
 
     self.keyword_models = {
         k: v for k, v in annotations.items() if issubclass(v, BaseModel)}
@@ -354,11 +375,10 @@ class Endpoint:
       if kwargs.get(key):
         kwargs[key] = kwargs[key].dict()
 
-    msg = RpcMessage(name=self.name, args=args, kwargs=kwargs)
-    response: RpcMessage = await provider.send(msg)
-    if self.return_type and issubclass(self.return_type, BaseModel):
-      result = self.return_type.parse_obj(response.result)
-      return result
+    msg = self.message_class(name=self.name, args=args, kwargs=kwargs)
+    response: RpcMessage = await provider.send(msg, message_class=self.message_class)
+    # return type is automatically processes by the type returned from
+    # create_model.
     return response.result
 
   async def receive(self, msg: RpcMessage) -> RpcMessage:
@@ -380,10 +400,7 @@ class Endpoint:
         kwargs[key] = cls.parse_obj(kwargs[key])
 
     result = await self.func(*args, **kwargs)  # type: ignore
-    if self.return_type and issubclass(self.return_type, BaseModel):
-      result = result.dict()
-
-    response = RpcMessage(id=msg.id, name=msg.name, result=result)
+    response = self.message_class(id=msg.id, name=msg.name, result=result)
     return response
 
   @classmethod
@@ -449,6 +466,7 @@ def create_client(
       queue_name=queue_name,
       callback_queue_name=callback_queue_name,
       callback_timeout=callback_timeout,
+      endpoints={e.name: e for e in endpoints},
       redis=None)
 
   for e in endpoints:
