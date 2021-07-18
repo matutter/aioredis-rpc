@@ -1,19 +1,20 @@
-__version__ = "v0.2.0"
+__version__ = "v1.0.0"
 
 import asyncio
 import logging
 from asyncio.futures import Future
 from inspect import FullArgSpec, getfullargspec
-from typing import (Any, Awaitable, Callable, Dict, List, Optional, Type,
-                    TypeVar, Union)
+from typing import (Any, Awaitable, Callable, Dict, List, Optional,
+                    Type, TypeVar, Union)
 from uuid import uuid1
 
 import aioredis  # type: ignore
 import async_timeout
-import msgpack  # type: ignore
 from aioredis.client import PubSub, Redis  # type: ignore
 from pydantic import BaseModel
 from pydantic.fields import Field
+
+from .msgpack_ext import pack_ext, unpack_ext
 
 T = TypeVar('T')
 
@@ -65,18 +66,28 @@ class RpcError(Exception):
   send: Optional[RpcMessage]
   reply: Optional[RpcMessage]
 
-  def __init__(self, send: RpcMessage = None, reply: RpcMessage = None) -> None:
+  def __init__(self, send: RpcMessage = None, reply: RpcMessage = None, msg: str = None) -> None:
     self.send = send
     self.reply = reply
     source: str = 'rpc call'
     if send and send.name:
       source = send.name
-    if reply and reply.error:
+    if msg:
+      pass
+    elif reply and reply.error:
       e: RpcErrorMessage = reply.error
       msg = f'Remote RPC error: {e.error_class} {e.msg} (from {source})'
     else:
       msg = f'Unexpected RPC error while contacting {source}'
     super().__init__(msg)
+
+
+class RpcNotConnectedError(RpcError):
+
+  def __init__(self, send: RpcMessage, msg: str = None) -> None:
+    if msg is None:
+      msg = f'remote endpoint not connected'
+    super().__init__(send=send, reply=None, msg=msg)
 
 
 class RpcProvider:
@@ -89,6 +100,10 @@ class RpcProvider:
   redis: Optional[Redis]
   _channel: Optional[PubSub]
   _receiver: Optional[Awaitable]
+
+  # Codec functions
+  pack_msg: Callable[[Any], bytes]
+  unpack_msg: Callable[[bytes], Any]
 
   # Client properties
   callback_timeout: float
@@ -105,7 +120,9 @@ class RpcProvider:
           callback_timeout: float = 10.0,
           callback_queue_name: str = None,
           endpoints: Dict[str, 'Endpoint'] = {},
-          redis: Redis = None) -> None:
+          redis: Redis = None,
+          pack_msg=pack_ext,
+          unpack_msg=unpack_ext) -> None:
 
     self.id = id or uuid1().hex
     self.queue_name = queue_name or 'rpc-queue'
@@ -116,6 +133,8 @@ class RpcProvider:
     self.redis = redis
     self._channel = None
     self._receiver = None
+    self.pack_msg = pack_msg # type: ignore
+    self.unpack_msg = unpack_msg # type: ignore
 
   @property
   def consumer_queue_name(self) -> str:
@@ -197,8 +216,7 @@ class RpcServer(RpcProvider):
       raise RuntimeError('cannot send message without redis connection')
 
     redis: Redis = self.redis  # type: ignore
-
-    msg = RpcMessage.parse_obj(msgpack.unpackb(data))
+    msg = RpcMessage.parse_obj(self.unpack_msg(data)) # type: ignore
     endpoint = self.endpoints[msg.name]
     try:
       response = await endpoint.receive(msg)
@@ -206,9 +224,11 @@ class RpcServer(RpcProvider):
       log.exception(f'%s failed to receive RPC message on %s',
                     self.id, endpoint)
       response = RpcMessage.from_exception(e, orig=msg)
-    data = msgpack.packb(response.dict())
+    data = self.pack_msg(response.dict()) # type: ignore
     log.debug('%s publishing to %s', self.id, msg.reply_to)
-    await redis.publish(msg.reply_to, data)
+    recv_count: int = await redis.publish(msg.reply_to, data)
+    if recv_count == 0:
+      log.warning('A client disconnected before response received %s', msg.id)
 
 
 class RpcClient(RpcProvider):
@@ -230,11 +250,13 @@ class RpcClient(RpcProvider):
     redis: Redis = self.redis  # type: ignore
 
     msg.reply_to = self.callback_queue_name
-    data = msgpack.packb(msg.dict())
+    data = self.pack_msg(msg.dict()) # type: ignore
     future: Future[RpcMessage] = Future()
     self.pending_results[msg.id] = future
     log.debug('%s publishing to %s', self.id, self.queue_name)
-    await redis.publish(self.queue_name, data)
+    recv_count: int = await redis.publish(self.queue_name, data)
+    if recv_count == 0:
+      future.set_exception(RpcNotConnectedError(send=msg))
     reply: RpcMessage = await asyncio.wait_for(future, self.callback_timeout)
     if reply.error:
       log.warning('%s rpc error from %s %s', self.id, msg.name, reply.error)
@@ -242,7 +264,7 @@ class RpcClient(RpcProvider):
     return reply
 
   async def receive(self, data: bytes):
-    msg = RpcMessage.parse_obj(msgpack.unpackb(data))
+    msg = RpcMessage.parse_obj(self.unpack_msg(data)) # type: ignore
     future = self.pending_results[msg.id]
     future.set_result(msg)
 

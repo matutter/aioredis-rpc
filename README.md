@@ -84,3 +84,10 @@ called like they are accessing the actual class passed to `create_client`.
 file1 = FileData(name='file1', data=b'1234')
 size = await client.upload_file(file1)
 ```
+
+## Development
+
+The following items will be handled in future revisions.
+
+- Support generic return-types so `list` and other container types may be
+  returned from endpoints.
