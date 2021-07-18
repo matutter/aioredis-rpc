@@ -11,6 +11,7 @@ UUID_EXT_ID = 25
 
 def ext_default(data: Any) -> msgpack.ExtType:
   if isinstance(data, datetime):
+    # This will lose TZ information, not a perfect serialization
     data = struct.pack('d', data.timestamp())
     return msgpack.ExtType(DATETIME_EXT_ID, data)
   if isinstance(data, UUID):
