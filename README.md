@@ -17,7 +17,7 @@ pip install aioredis-rpc
 ```
 
 `pydantic` is used to model complex objects which are transparently serialized
-and packed into messages.
+and packed into messages using `msgpack`.
 
 ```python
 # Define Pydantic models
@@ -27,7 +27,7 @@ class FileData(BaseModel):
 ```
 
 Define a class using the `@endpoint` decorator to specify which methods will be
-accessible over the rpc interface.
+accessible via rpc.
 
 ```python
 from redisrpc import endpoint
@@ -50,44 +50,47 @@ class Dropbox:
     return len(file.data)
 
   @endpoint
+  def get_file_names(self) -> List[str]:
+    return list(self.files.keys())
+
+  @endpoint
   async def download_file(self, name: str) -> FileData:
     return self.files[name]
 ```
 
-Use `create_server` function to create an instance of your server-side rpc
-class. The server instance will be assigned an `rpc: RpcProvider` attribute to
-access server functions like `connect` and `disconnect`. Once `connect` is
-called methods decorated with `@endpoint` will be invoked automatically by
-client RPC messages.
+Use the `create_server` function to make an instance of your server-side rpc
+class. The server instance will be assigned an `rpc` attribute to access server
+functions like `connect` and `disconnect`. Once `connect` is called methods
+decorated with `@endpoint` will be invoked automatically by remote calls from
+the client.
 
-Also note that `connect` is non-blocking.
+> _NOTE: The `RpcProvider.connect` method is non-blocking._
 
 ```python
 server = create_server(Dropbox, max_files=2)
 # Returns once connected to redis
 await server.rpc.connect(dsn="redis://localhost")
+# Wait forever
+while True:
+  await asyncio.sleep(1)
 ```
 
 The `create_client` function create a faux instance of the rpc class with only
 the methods decorated by `@endpoint` present. When these methods are called by
 the client the function arguments are serialized and published to redis.
 
+> _NOTE: If there are no subscribers to the redis channel then the client will
+> throw a `RpcNotConnectedError`._
+
 ```python
 client = create_client(Dropbox)
 await client.rpc.connect(dsn="redis://localhost")
 ```
 
-Now that both ends are connected the the `@endpoint` decorated methods may be
-called like they are accessing the actual class passed to `create_client`.
+Now that both ends are connected the `@endpoint` decorated methods may be called
+like they are accessing the actual class passed to `create_client`.
 
 ```python
 file1 = FileData(name='file1', data=b'1234')
 size = await client.upload_file(file1)
 ```
-
-## Development
-
-The following items will be handled in future revisions.
-
-- Support generic return-types so `list` and other container types may be
-  returned from endpoints.

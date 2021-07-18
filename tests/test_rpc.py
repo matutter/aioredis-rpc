@@ -78,8 +78,9 @@ class MyRpc:
 
 
 async def test_rpc_1(cleanup):
-  client = create_client(MyRpc)
-  server = create_server(MyRpc)
+  timeout = 300
+  client = create_client(MyRpc, callback_timeout=timeout)
+  server = create_server(MyRpc, callback_timeout=timeout)
   print('client connecting')
   await client.rpc.connect(dsn=TEST_RMQ_DSN)
   print('client connected')
@@ -114,15 +115,15 @@ async def test_rpc_1(cleanup):
 
 
 async def test_rpc_type_support_1():
+  # NOTE as of v1.1 these endpoint is now supported
 
-  with pytest.raises(TypeError):
-    class MyUnsupportedType:
+  class MyType(BaseModel):
+    pass
+
+  class AnRpcClass:
+    @endpoint
+    async def func(var: str, unsupported: MyType) -> List[MyType]:
       pass
-
-    class AnRpcClass:
-      @endpoint
-      async def func(var: str, unsupported: MyUnsupportedType):
-        pass
 
 
 async def test_subprocess_1():
