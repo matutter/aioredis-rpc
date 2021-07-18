@@ -8,7 +8,7 @@ from typing import List
 
 import coloredlogs
 import pytest
-from aioredis_rpc import (RpcError, RpcProvider, create_client, create_server,
+from aioredis_rpc import (RpcError, RpcNotConnectedError, RpcProvider, create_client, create_server,
                           endpoint)
 from pydantic.main import BaseModel
 
@@ -205,3 +205,14 @@ async def test_rpc_speed_1(cleanup, size, count):
   await run(data, count)
 
   process.terminate()
+
+
+async def test_tpc_no_server_1(cleanup):
+  client = create_client(MyRpc, queue_name='no_server')
+  cleanup(client.rpc.disconnect)
+  print('client connecting')
+  await client.rpc.connect(dsn=TEST_RMQ_DSN)
+  print('client connected')
+
+  with pytest.raises(RpcNotConnectedError):
+    await client.func1('abc', Input(arg='123'), other=1)
